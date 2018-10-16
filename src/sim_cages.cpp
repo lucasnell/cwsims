@@ -241,8 +241,8 @@ void replace_plants(uint32& repl_ind,
     }
 
     /*
-    Otherwise, disperse across all non-replaced plants only:
-    */
+     Otherwise, disperse across all non-replaced plants only:
+     */
     // Adjust pools of aphid lines in replaced and non-replaced plants:
     for (uint32 j = 0; j < n_lines; j++) {
         // Pool of aphids of line j to disperse across non-replaced plants:
@@ -348,7 +348,7 @@ void sim_cage(const arma::mat& N_0,
                    plant_death_ages, i,
                    normal_rng, eng);
     }
-// Index to keep track of position in `repl_times`
+    // Index to keep track of position in `repl_times`
     uint32 repl_ind = 0;
     if (repl_times.front() == 0) repl_ind++;
     // Matrices keeping track of numbers of dispersed aphids:
@@ -447,16 +447,35 @@ void sim_cage(const arma::mat& N_0,
         // Update rows by plant:
         Z = arma::sum(Nt1, 1);
 
-        for (uint32 i = 0; i < n_plants; i++) {
-            if (Z(i) > repl_threshold || plant_days(i) >= 0) {
-                Z(i) = 0;
-                Nt1.row(i).zeros();
-                plant_days(i) = sample_plant_days(plant_death_age_mean,
-                           plant_death_age_sd,
-                           plant_death_ages, i,
-                           normal_rng, eng);
-            }
-
+        // Check for each plant being above a threshold:
+        std::vector<uint32> Z_repl = arma::conv_to<std::vector<uint32>>::from(
+            arma::find(Z > repl_threshold));
+        /*
+         If doing these replacements results in total extinction, then remove plants
+         until they no longer do.
+         */
+        double Z_sum = 0, repl_sum = 0;
+        for (double& d : Z) Z_sum += d;
+        for (uint32& i : Z_repl) repl_sum += Z(i);
+        if (Z_sum != repl_sum && Z_repl.size() == n_plants) {
+            Rcout << "\nERROR: should be equal." << std::endl;
+            Rcout << Z_sum << ' ' << repl_sum << std::endl;
+            return;
+        }
+        while (Z_sum == repl_sum && Z_repl.size() > 0) {
+            repl_sum -= Z(Z_repl.back());
+            Z_repl.pop_back();
+        }
+        if (Z_repl.size() > 0) {
+            Rcout << Z_repl.size() << " replaced at t=" << t << std::endl;
+        }
+        for (uint32& i : Z_repl) {
+            Z(i) = 0;
+            Nt1.row(i).zeros();
+            plant_days(i) = sample_plant_days(plant_death_age_mean,
+                       plant_death_age_sd,
+                       plant_death_ages, i,
+                       normal_rng, eng);
         }
 
         // Iterate for time t next round
